@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Medical QA System</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        textarea {
+            width: 100%;
+            height: 120px;
+            margin-bottom: 10px;
+            padding: 10px;
+        }
+        button {
+            background-color: #4CAF50;
+            border: none;
+            color: white;
+            padding: 10px 20px;
+            text-align: center;
+            cursor: pointer;
+            width: 100%;
+            font-size: 16px;
+        }
+        .answer-box {
+            margin-top: 20px;
+            border: 1px solid #ddd;
+            padding: 15px;
+            min-height: 100px;
+        }
+        h1, h2 {
+            color: #333;
+        }
+        .error {
+            color: red;
+        }
+    </style>
+</head>
+<body>
+    <h1>Medical QA System</h1>
+    
+    <h2>Ask a medical question:</h2>
+    <form id="questionForm">
+        <textarea id="questionInput" required></textarea>
+        <button type="submit">Get Answer</button>
+    </form>
+    
+    <h2>Answer:</h2>
+    <div id="answerBox" class="answer-box">Answer will appear here...</div>
+
+    <script>
+        document.getElementById('questionForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const question = document.getElementById('questionInput').value;
+            const answerBox = document.getElementById('answerBox');
+            
+            answerBox.textContent = 'Processing...';
+            
+            const formData = new FormData();
+            formData.append('question', question);
+            
+            fetch('/get_answer', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    answerBox.innerHTML = `<span class="error">Error: ${data.error}</span>`;
+                } else {
+                    answerBox.textContent = data.answer;
+                }
+            })
+            .catch(error => {
+                answerBox.innerHTML = `<span class="error">Error: ${error.message}</span>`;
+            });
+        });
+    </script>
+</body>
+</html>
