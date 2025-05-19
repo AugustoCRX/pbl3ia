@@ -1,16 +1,17 @@
 from flask import Flask, request, jsonify, render_template
-from flask_cors import CORS # Importar Flask-CORS
-from transformers import AutoModelForCausalLM, AutoTokenizer
-from peft import PeftModel
+from flask_cors import CORS
 import torch
 import re
+import os
+import sys
 
 app = Flask(__name__)
-CORS(app) # Habilitar CORS para todas as rotas e origens
+CORS(app)  # Habilitando CORS para todas as rotas
 
 # Global variables for model and tokenizer
 model = None
 tokenizer = None
+model_loaded = False
 
 def remove_chain_stitches(text):
     # Remove sequences of special characters that form "chain stitch" patterns
@@ -65,40 +66,71 @@ def transform_case(text):
     return ' '.join(transformed_sentences)
 
 def load_model():
-    global model, tokenizer
+    global model, tokenizer, model_loaded
+    
+    # Só importamos essas bibliotecas quando realmente precisamos delas
     try:
-        # Load base model in CPU mode
+        from transformers import AutoModelForCausalLM, AutoTokenizer
+        from peft import PeftModel
+    except ImportError:
+        print("ERRO: Bibliotecas 'transformers' ou 'peft' não instaladas.")
+        print("Execute: pip install transformers peft")
+        sys.exit(1)
+    
+    try:
+        # Define o caminho do modelo usando string raw (r"") para evitar problemas de escape
+        model_path = r"C:\Users\steph\GitHub\pbl3ia\deepseek_medical_qa_peft"
+        
+        # Verifica se o diretório existe
+        if not os.path.exists(model_path):
+            raise FileNotFoundError(f"O diretório do modelo não foi encontrado: {model_path}")
+        
+        print(f"Carregando modelo de: {model_path}")
+        print("Este processo pode demorar alguns minutos...")
+        
+        # Tenta carregar o modelo base em modo CPU
         base_model = AutoModelForCausalLM.from_pretrained(
             "deepseek-ai/DeepSeek-R1-Distill-Llama-8B",
             torch_dtype=torch.float16,
-            device_map="cpu"  # Force CPU
+            device_map="cpu"  # Força CPU
         )
         
         base_model.resize_token_embeddings(128270)
         
-        # Load your adapter weights
+        # Carrega os pesos do adaptador
         model = PeftModel.from_pretrained(
             base_model,
-            "H:\\api_qa_medical\\deepseek_medical_qa_peft"
+            model_path
         )
         
-        # Load the tokenizer from your saved files
-        tokenizer = AutoTokenizer.from_pretrained(
-            "H:\\api_qa_medical\\deepseek_medical_qa_peft"
-        )
+        # Carrega o tokenizer dos arquivos salvos
+        tokenizer = AutoTokenizer.from_pretrained(model_path)
         
-        print("Model and tokenizer loaded successfully!")
+        # Marca que o modelo foi carregado com sucesso
+        model_loaded = True
+        print("Modelo e tokenizer carregados com sucesso!")
+        return True
     except Exception as e:
-        print(f"Error loading model: {str(e)}")
+        print(f"ERRO ao carregar o modelo: {str(e)}")
+        # Imprime detalhes mais específicos sobre o erro
+        import traceback
+        traceback.print_exc()
+        model_loaded = False
+        return False
 
-def generate_medical_answer(question, model, tokenizer, max_length=200):
-    # Format the prompt with your special tokens
+def generate_medical_answer(question, max_length=200):
+    global model, tokenizer
+    
+    if not model_loaded or model is None or tokenizer is None:
+        raise RuntimeError("Modelo não carregado. Execute o carregamento do modelo primeiro.")
+    
+    # Formata o prompt com seus tokens especiais
     prompt = f"<|patient|>{question}<|endofprompt|>"
     
-    # Tokenize
+    # Tokeniza
     inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
     
-    # Generate
+    # Gera
     with torch.no_grad():
         outputs = model.generate(
             input_ids=inputs.input_ids,
@@ -111,7 +143,7 @@ def generate_medical_answer(question, model, tokenizer, max_length=200):
             repetition_penalty=1.2
         )
     
-    # Decode
+    # Decodifica
     generated_text = tokenizer.decode(outputs[0], skip_special_tokens=False)
     
     generated_text = generated_text.replace("<|endoftext|>", "")
@@ -126,19 +158,55 @@ def generate_medical_answer(question, model, tokenizer, max_length=200):
 def index():
     return render_template('index.html')
 
+@app.route('/status')
+def status():
+    """Endpoint para verificar se o modelo está carregado"""
+    if model_loaded:
+        return jsonify({'status': 'ready', 'message': 'Modelo carregado e pronto para uso'})
+    else:
+        return jsonify({'status': 'not_ready', 'message': 'Modelo não carregado. Inicie o servidor novamente.'}), 503
+
 @app.route('/get_answer', methods=['POST'])
 def get_answer():
     try:
-        question = request.form.get('question')
-        if model is None or tokenizer is None:
-            return jsonify({'error': 'Model not loaded yet'}), 500
+        print("Requisição recebida em /get_answer")
         
-        answer = generate_medical_answer(question, model, tokenizer)
+        # Verifica se o modelo está carregado
+        if not model_loaded:
+            print("ERRO: Modelo ou tokenizer não carregado")
+            return jsonify({
+                'error': 'Modelo não carregado',
+                'message': 'Reinicie o servidor para carregar o modelo novamente'
+            }), 503
+        
+        # Obtém a pergunta do formulário
+        question = request.form.get('question')
+        if not question:
+            # Tenta obter do JSON se não estiver no formulário
+            data = request.get_json(silent=True)
+            if data and 'question' in data:
+                question = data['question']
+            else:
+                return jsonify({'error': 'Nenhuma pergunta fornecida'}), 400
+                
+        print(f"Pergunta recebida: {question}")
+        
+        print("Gerando resposta com o modelo...")
+        answer = generate_medical_answer(question)
+        print(f"Resposta gerada com sucesso: {answer[:50]}...")
         return jsonify({'answer': answer})
     except Exception as e:
+        print(f"Erro detalhado: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
-    # Load the model before starting the Flask app
-    load_model()
-    app.run(debug=True, use_reloader=False)  # Set use_reloader=False to avoid loading the model twice
+    # Carrega o modelo antes de iniciar o app Flask
+    success = load_model()
+    
+    if not success:
+        print("AVISO: O servidor será iniciado, mas o modelo não foi carregado corretamente.")
+        print("As requisições para /get_answer falharão até que o modelo seja carregado.")
+        print("Verifique os erros acima e reinicie o servidor.")
+    
+    # Inicia o servidor Flask
+    app.run(debug=True, use_reloader=False, host='0.0.0.0', port=5000)
