@@ -1,10 +1,12 @@
 from flask import Flask, request, jsonify, render_template
+from flask_cors import CORS # Importar Flask-CORS
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from peft import PeftModel
 import torch
 import re
 
 app = Flask(__name__)
+CORS(app) # Habilitar CORS para todas as rotas e origens
 
 # Global variables for model and tokenizer
 model = None
