@@ -69,31 +69,31 @@ def load_model():
     try:
         # Load base model in CPU mode
         base_model = AutoModelForCausalLM.from_pretrained(
-            "deepseek-ai/DeepSeek-R1-Distill-Llama-8B",
+            "deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B",
             torch_dtype=torch.float16,
             device_map="cpu"  # Force CPU
         )
         
-        base_model.resize_token_embeddings(128270)
+        base_model.resize_token_embeddings(151679)
         
         # Load your adapter weights
         model = PeftModel.from_pretrained(
             base_model,
-            "H:\\api_qa_medical\\deepseek_medical_qa_peft"
+            "I:\\api_qa_medical\\deepseek_medical_qa_peft"
         )
         
         # Load the tokenizer from your saved files
         tokenizer = AutoTokenizer.from_pretrained(
-            "H:\\api_qa_medical\\deepseek_medical_qa_peft"
+            "I:\\api_qa_medical\\deepseek_medical_qa_peft"
         )
         
         print("Model and tokenizer loaded successfully!")
     except Exception as e:
         print(f"Error loading model: {str(e)}")
 
-def generate_medical_answer(question, model, tokenizer, max_length=200):
+def generate_medical_answer(question, model, tokenizer, max_length=256):
     # Format the prompt with your special tokens
-    prompt = f"<|patient|>{question}<|endofprompt|>"
+    prompt = f"'<think>\n{question}"
     
     # Tokenize
     inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
@@ -105,19 +105,22 @@ def generate_medical_answer(question, model, tokenizer, max_length=200):
             attention_mask=inputs.attention_mask,
             max_new_tokens=max_length,
             do_sample=True,
-            temperature=0.7,
+            temperature=0.6,
             top_p=0.9,
             top_k=50,
             repetition_penalty=1.2
         )
+    print(outputs)
+    generated_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
     
     # Decode
-    generated_text = tokenizer.decode(outputs[0], skip_special_tokens=False)
+    # generated_text = tokenizer.decode(outputs[0], skip_special_tokens=False)
     
-    generated_text = generated_text.replace("<|endoftext|>", "")
-    generated_text = generated_text.replace(prompt, "")
+    if generated_text.startswith(prompt):
+        generated_text = generated_text[len(prompt):]
     generated_text = generated_text.replace("<|doctor|>", "")
     generated_text = generated_text.replace(r"<｜begin▁of▁sentence｜>", "")
+    generated_text = generated_text.replace("<|endoftext|>", "")
     generated_text = remove_chain_stitches(generated_text)
     generated_text = transform_case(generated_text)
     return generated_text
@@ -141,4 +144,4 @@ def get_answer():
 if __name__ == '__main__':
     # Load the model before starting the Flask app
     load_model()
-    app.run(debug=True, use_reloader=False)  # Set use_reloader=False to avoid loading the model twice
+    app.run(debug=True, use_reloader = False)  # Set use_reloader=False to avoid loading the model twice
