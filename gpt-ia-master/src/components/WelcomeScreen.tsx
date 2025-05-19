@@ -19,7 +19,7 @@ export const WelcomeScreen: React.FC = () => {
       </motion.div>
 
       <h1 className="text-4xl font-bold mb-4 bg-clip-text text-transparent bg-gradient-to-r from-indigo-500 to-purple-600">
-        Welcome to G(eovane)PT
+        Welcome to G.PT
       </h1>
       
       <p className="text-gray-600 dark:text-gray-400 mb-8 text-center max-w-md">

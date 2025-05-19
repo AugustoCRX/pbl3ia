@@ -18,7 +18,7 @@ export const Logo: React.FC = () => {
       </motion.div>
       <div>
         <h1 className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-500 to-purple-600">
-          G(eovane)PT
+          G.PT
         </h1>
         <p className="text-xs text-gray-500 dark:text-gray-400">AI Assistant</p>
       </div>
